@@ -5,6 +5,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#1a1a2e;display:flex;flex-direction:column;align-items:center;
   justify-content:center;min-height:100vh;font-family:monospace;color:#e0e0e0;overflow:auto;padding:10px}
+.main{display:flex;align-items:center;gap:18px}
 #canvas{font-family:'Courier New',monospace;font-size:16px;line-height:1.15;
   white-space:pre;margin-bottom:12px}
 .t{color:#8B6914}.t2{color:#6B4C09}.t3{color:#A07828}
@@ -13,6 +14,31 @@ body{background:#1a1a2e;display:flex;flex-direction:column;align-items:center;
 .l1{color:#2E8B2E}.l2{color:#3CB043}.l3{color:#5DBB5D}.l4{color:#228B22}.l5{color:#90EE90}
 .lg{color:#9ACD32}.lf{color:#DAA520}
 .p{color:#777}.ps{color:#705030}
+/* baobab */
+.bk1{color:#8B7355}.bk2{color:#6B5B45}.bk3{color:#A0896A}
+.sv1{color:#C2B280}.sv2{color:#8B7D5B}.sv3{color:#6B6040}
+/* swamp */
+.ms{color:#5B7B5B}.ms2{color:#4A6A4A}.wt{color:#4A6969}
+.sw1{color:#3A5A6A}.sw2{color:#2A4A5A}.sw3{color:#5A8A5A}.sw4{color:#4A7A4A}
+/* bamboo */
+.bm1{color:#4A7A3A}.bm2{color:#3B6B2B}.bm3{color:#6B9B5B}.bmn{color:#8B6914}
+.bg1{color:#5A4A3A}.bg2{color:#4A3A2A}
+/* oak */
+.ok1{color:#6B5030}.ok2{color:#5A4020}
+.gr1{color:#3A6A2A}.gr2{color:#4A7A3A}.gr3{color:#6A6A5A}.gs{color:#7A7A6A}
+
+.tree-select{display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.tree-btn{
+  width:68px;height:68px;border-radius:50%;border:2px solid #333;background:#12121f;
+  cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:all 0.2s;position:relative;overflow:hidden;
+}
+.tree-btn:hover{border-color:#6B8E23;transform:scale(1.08)}
+.tree-btn.selected{border-color:#8f8;box-shadow:0 0 12px #2a5a2a}
+.tree-btn .icon{font-size:22px;line-height:1}
+.tree-btn .lbl{font-size:9px;color:#888;font-family:monospace;margin-top:2px}
+.tree-btn.selected .lbl{color:#8f8}
+
 .ctrls{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center;margin-bottom:6px}
 .ctrls button{background:none;border:1px solid #555;color:#aaa;padding:6px 16px;
   font-family:monospace;font-size:14px;cursor:pointer;border-radius:4px}
@@ -23,7 +49,10 @@ body{background:#1a1a2e;display:flex;flex-direction:column;align-items:center;
 </style>
 </head>
 <body>
+<div class="main">
 <div id="canvas"></div>
+<div class="tree-select" id="treeSelect"></div>
+</div>
 <div class="ctrls">
   <button onclick="resetTree()">plant new seed</button>
   <button id="pauseBtn" onclick="togglePause()">pause</button>
@@ -32,31 +61,56 @@ body{background:#1a1a2e;display:flex;flex-direction:column;align-items:center;
 <div class="info" id="info"></div>
 
 <script>
-const W=110,H=62;
-const CX=Math.floor(W/2);
+const W=110,H=62,CX=Math.floor(W/2);
 let grid,clr,shoots,paused=false,age=0,timer,delay=140;
-
-// Branch queue: branches wait here until the previous one is done
 let branchQueue=[];
-let activeBranch=false; // is a branch currently growing?
+let selectedType='bonsai';
+
+const TYPES=[
+  {id:'bonsai',icon:'🌿',label:'Bonsai'},
+  {id:'baobab',icon:'🌳',label:'Baobab'},
+  {id:'oak',icon:'🍂',label:'Oak'},
+  {id:'swamp',icon:'🌾',label:'Swamp'},
+  {id:'bamboo',icon:'🎋',label:'Bamboo'},
+];
+
+function buildSelector(){
+  const el=document.getElementById('treeSelect');
+  el.innerHTML='';
+  TYPES.forEach(t=>{
+    const b=document.createElement('button');
+    b.className='tree-btn'+(t.id===selectedType?' selected':'');
+    b.innerHTML='<span class="icon">'+t.icon+'</span><span class="lbl">'+t.label+'</span>';
+    b.onclick=()=>{selectedType=t.id;buildSelector();};
+    el.appendChild(b);
+  });
+}
+buildSelector();
 
 function init(){
   grid=[];clr=[];
   for(let r=0;r<H;r++){grid[r]=new Array(W).fill(' ');clr[r]=new Array(W).fill('');}
-  shoots=[];age=0;
-  branchQueue=[];
-  activeBranch=false;
-  drawPot();
-  startBonsai();
+  shoots=[];age=0;branchQueue=[];
+  drawBase();
+  startTree();
 }
 
 function s(r,c,ch,cl){if(r>=0&&r<H&&c>=0&&c<W){grid[r][c]=ch;clr[r][c]=cl||'';}}
+function g(r,c){return(r>=0&&r<H&&c>=0&&c<W)?grid[r][c]:' ';}
 function empty(r,c){return r>=0&&r<H&&c>=0&&c<W&&grid[r][c]===' ';}
 function ri(a,b){return a+Math.floor(Math.random()*(b-a+1));}
 
+/* ── BASE DRAWING PER TREE TYPE ── */
+function drawBase(){
+  if(selectedType==='bonsai') drawPot();
+  else if(selectedType==='baobab') drawSavanna();
+  else if(selectedType==='oak') drawGrass();
+  else if(selectedType==='swamp') drawMarsh();
+  else if(selectedType==='bamboo') drawBambooGround();
+}
+
 function drawPot(){
-  let pw=44,pl=CX-Math.floor(pw/2),pr=pl+pw-1;
-  let pt=H-7;
+  let pw=44,pl=CX-Math.floor(pw/2),pr=pl+pw-1,pt=H-7;
   for(let c=pl;c<=pr;c++) s(pt,c,'▄','p');
   for(let r=pt+1;r<=pt+3;r++){s(r,pl,'│','p');s(r,pr,'│','p');}
   for(let r=pt+1;r<=pt+2;r++)
@@ -66,39 +120,135 @@ function drawPot(){
   s(pt+5,pr-5,'(','p');s(pt+5,pr-4,'_','p');s(pt+5,pr-3,')','p');
 }
 
+function drawSavanna(){
+  let gY=H-6;
+  // Dry ground line
+  for(let c=0;c<W;c++){
+    let ch=Math.random()<0.15?',':Math.random()<0.2?'.':Math.random()<0.1?'`':'_';
+    s(gY,c,ch,'sv2');
+    // Sparse dry grass tufts
+    if(Math.random()<0.06){
+      let h=ri(1,3);
+      for(let d=1;d<=h;d++){
+        let gc=Math.random()<0.5?'╷':Math.random()<0.5?'¦':'\'';
+        if(d===h) gc=Math.random()<0.5?'·':'\'';
+        s(gY-d,c,gc,'sv1');
+      }
+    }
+    // Sandy ground beneath
+    if(gY+1<H&&Math.random()<0.5) s(gY+1,c,Math.random()<0.4?'·':'.','sv3');
+  }
+  // A couple small rocks
+  for(let i=0;i<3;i++){
+    let rx=ri(5,W-6);
+    s(gY,rx,'�ite'[ri(0,1)]==='◒'?'◒':'∩','sv3');
+  }
+}
+
+function drawGrass(){
+  let gY=H-6;
+  for(let c=0;c<W;c++){
+    let ch=Math.random()<0.3?',':Math.random()<0.2?'.':Math.random()<0.15?'w':'_';
+    s(gY,c,ch,'gr1');
+    // Grass blades
+    if(Math.random()<0.12){
+      let h=ri(1,2);
+      for(let d=1;d<=h;d++){
+        s(gY-d,c,d===h?Math.random()<0.5?'*':'·':'|',Math.random()<0.5?'gr2':'gr1');
+      }
+    }
+    // Small stones
+    if(Math.random()<0.03) s(gY,c,Math.random()<0.5?'o':'°','gs');
+    // Dirt beneath
+    if(gY+1<H) s(gY+1,c,Math.random()<0.3?'.':' ','gr3');
+  }
+}
+
+function drawMarsh(){
+  let wY=H-6;
+  // Water line
+  for(let c=0;c<W;c++){
+    let ch=Math.random()<0.25?'~':Math.random()<0.2?'≈':Math.random()<0.15?'░':'~';
+    s(wY,c,ch,Math.random()<0.5?'sw1':'sw2');
+    // Lily pads
+    if(Math.random()<0.04){
+      s(wY,c,'◎','sw3');
+      if(c+1<W) s(wY,c+1,'○','sw4');
+    }
+    // Reeds poking up
+    if(Math.random()<0.05){
+      let h=ri(2,4);
+      for(let d=1;d<=h;d++){
+        let rc=d===h?Math.random()<0.5?'♣':'*':'│';
+        s(wY-d,c,rc,d===h?'ms':'ms2');
+      }
+    }
+    // Murky water below
+    if(wY+1<H) s(wY+1,c,Math.random()<0.4?'~':'░',Math.random()<0.5?'sw2':'sw1');
+  }
+}
+
+function drawBambooGround(){
+  let gY=H-2;
+  for(let c=0;c<W;c++){
+    let ch=Math.random()<0.2?',':Math.random()<0.15?'.':Math.random()<0.1?'`':'_';
+    s(gY,c,ch,'bg1');
+    // Small ground plants
+    if(Math.random()<0.04){
+      s(gY-1,c,Math.random()<0.5?'♣':'*',Math.random()<0.5?'l4':'l2');
+    }
+    if(gY+1<H&&Math.random()<0.3) s(gY+1,c,'.','bg2');
+  }
+}
+
 const LEAFCH=['&','&','&','*','#','@','♣','♣'];
 const LEAFCL=['l1','l1','l2','l2','l3','l4','l5','lg','lf'];
 
-function addLeaf(r,c){
+function addLeaf(r,c,cls){
   if(!empty(r,c))return;
   let ch=LEAFCH[ri(0,LEAFCH.length-1)];
-  let cl=LEAFCL[ri(0,LEAFCL.length-3)];
-  if(Math.random()<0.06) cl='lf';
-  if(Math.random()<0.08) cl='lg';
+  let cl=cls||LEAFCL[ri(0,LEAFCL.length-3)];
+  if(!cls&&Math.random()<0.06) cl='lf';
+  if(!cls&&Math.random()<0.08) cl='lg';
   s(r,c,ch,cl);
 }
 
-function drawCloudPad(cy,cx,halfW,h){
-  // Rounded on top, flat and wide on the bottom (like bonsai canopy shelves)
+function drawCloudPad(cy,cx,halfW,h,cls){
   for(let dr=0;dr<h;dr++){
     let fromBottom=h-1-dr;
-    let rowW;
-    if(fromBottom===0) rowW=halfW;
-    else if(fromBottom===1) rowW=halfW-1;
-    else rowW=Math.max(2,halfW-fromBottom*2);
+    let rowW=fromBottom===0?halfW:fromBottom===1?halfW-1:Math.max(2,halfW-fromBottom*2);
     let density=fromBottom<=1?0.92:fromBottom<=2?0.82:0.65;
     for(let dc=-rowW;dc<=rowW;dc++){
-      let cornerDist=Math.abs(dc)-rowW+1;
-      if(cornerDist>0&&Math.random()<0.5)continue;
-      if(Math.random()<density) addLeaf(cy+dr,cx+dc);
+      if(Math.abs(dc)-rowW+1>0&&Math.random()<0.5)continue;
+      if(Math.random()<density) addLeaf(cy+dr,cx+dc,cls);
     }
   }
   for(let dc=-halfW-1;dc<=halfW+1;dc++){
-    if(Math.random()<0.25) addLeaf(cy+h,cx+dc);
+    if(Math.random()<0.25) addLeaf(cy+h,cx+dc,cls);
   }
 }
 
-const STYLES=[
+/* Circular canopy for oak */
+function drawCirclePad(cy,cx,radius,cls){
+  let r2=radius*radius;
+  for(let dr=-radius;dr<=radius;dr++){
+    for(let dc=-Math.ceil(radius*1.4);dc<=Math.ceil(radius*1.4);dc++){
+      // Ellipse: wider than tall since chars are taller than wide
+      let normR=dr/radius;
+      let normC=dc/(radius*1.4);
+      let dist=normR*normR+normC*normC;
+      if(dist>1.0) continue;
+      // Denser in center, sparser at edges
+      let density=dist<0.4?0.92:dist<0.7?0.82:0.62;
+      // Fuzzy edge
+      if(dist>0.85&&Math.random()<0.45) continue;
+      if(Math.random()<density) addLeaf(cy+dr,cx+dc,cls);
+    }
+  }
+}
+
+/* ── BONSAI STYLES ── */
+const BONSAI_STYLES=[
   {name:'moyogi',lean:0.45,trunkLen:[20,25],curv:0.5,
    branches:[
      {frac:0.28,dir:-1,len:[8,12],ang:-0.12,padW:[8,12],padH:[3,4]},
@@ -127,38 +277,111 @@ const STYLES=[
    ]},
 ];
 
-function startBonsai(){
-  let baseY=H-8;
-  let style=STYLES[ri(0,STYLES.length-1)];
+/* ── TREE STARTERS ── */
+function startTree(){
+  let baseY=H-7;
+  if(selectedType==='bonsai') startBonsai(baseY-1);
+  else if(selectedType==='baobab') startBaobab(baseY);
+  else if(selectedType==='oak') startOak(baseY);
+  else if(selectedType==='swamp') startSwamp(baseY);
+  else if(selectedType==='bamboo') startBamboo();
+}
+
+function startBonsai(baseY){
+  let style=BONSAI_STYLES[ri(0,BONSAI_STYLES.length-1)];
   let tLen=ri(style.trunkLen[0],style.trunkLen[1]);
   let leanDir=Math.random()<0.5?1:-1;
   let lean=style.lean*leanDir;
-
   let pbs=style.branches.map(b=>{
-    let d=b.dir;
-    if(d!==0&&leanDir<0) d=-d;
+    let d=b.dir;if(d!==0&&leanDir<0) d=-d;
     return{...b,dir:d,triggered:false};
   });
-
-  shoots.push({
-    type:'trunk',x:CX,y:baseY,xf:0,
-    life:tLen,lean:lean,curv:style.curv,
-    age:0,tLen:tLen,pendingBranches:pbs
-  });
+  shoots.push({type:'trunk',tree:'bonsai',x:CX,y:baseY,xf:0,
+    life:tLen,lean,curv:style.curv,age:0,tLen,pendingBranches:pbs});
 }
 
+function startBaobab(baseY){
+  let tLen=ri(28,35);
+  let leanDir=Math.random()<0.5?1:-1;
+  let baseBranches=[
+    {frac:0.80,dir:-1,len:[5,8],ang:-0.35,padW:[9,13],padH:[3,5]},
+    {frac:0.82,dir:1,len:[5,8],ang:-0.35,padW:[9,13],padH:[3,5]},
+    {frac:0.88,dir:-1,len:[7,11],ang:-0.28,padW:[10,14],padH:[3,5]},
+    {frac:0.90,dir:1,len:[7,11],ang:-0.28,padW:[10,14],padH:[3,5]},
+    {frac:0.96,dir:0,len:[2,4],ang:-0.8,padW:[10,14],padH:[3,5]},
+  ];
+  let pbs=baseBranches.map(b=>{
+    let d=b.dir;if(d!==0&&leanDir<0) d=-d;
+    return{...b,dir:d,triggered:false};
+  });
+  shoots.push({type:'trunk',tree:'baobab',x:CX,y:baseY,xf:0,
+    life:tLen,lean:0.05*leanDir,curv:0.08,age:0,tLen,pendingBranches:pbs});
+}
+
+function startOak(baseY){
+  let tLen=ri(24,30);
+  let leanDir=Math.random()<0.5?1:-1;
+  let baseBranches=[
+    {frac:0.30,dir:-1,len:[10,15],ang:-0.10,padR:[5,7]},
+    {frac:0.33,dir:1,len:[10,15],ang:-0.10,padR:[5,7]},
+    {frac:0.50,dir:-1,len:[12,18],ang:-0.12,padR:[6,8]},
+    {frac:0.53,dir:1,len:[12,18],ang:-0.12,padR:[6,8]},
+    {frac:0.70,dir:-1,len:[8,13],ang:-0.18,padR:[5,7]},
+    {frac:0.73,dir:1,len:[8,13],ang:-0.18,padR:[5,7]},
+    {frac:0.88,dir:-1,len:[5,8],ang:-0.28,padR:[4,5]},
+    {frac:0.90,dir:1,len:[5,8],ang:-0.28,padR:[4,5]},
+    {frac:0.97,dir:0,len:[3,5],ang:-0.75,padR:[5,7]},
+  ];
+  let pbs=baseBranches.map(b=>{
+    let d=b.dir;if(d!==0&&leanDir<0) d=-d;
+    return{...b,dir:d,triggered:false};
+  });
+  shoots.push({type:'trunk',tree:'oak',x:CX,y:baseY,xf:0,
+    life:tLen,lean:0.18*leanDir,curv:0.18,age:0,tLen,pendingBranches:pbs});
+}
+
+function startSwamp(baseY){
+  let tLen=ri(22,28);
+  let leanDir=Math.random()<0.5?1:-1;
+  let baseBranches=[
+    {frac:0.25,dir:-1,len:[10,14],ang:-0.06,padW:[6,9],padH:[2,3],droop:true},
+    {frac:0.28,dir:1,len:[10,14],ang:-0.06,padW:[6,9],padH:[2,3],droop:true},
+    {frac:0.48,dir:-1,len:[12,17],ang:-0.08,padW:[7,10],padH:[2,3],droop:true},
+    {frac:0.51,dir:1,len:[12,17],ang:-0.08,padW:[7,10],padH:[2,3],droop:true},
+    {frac:0.68,dir:-1,len:[8,12],ang:-0.14,padW:[6,9],padH:[2,3],droop:true},
+    {frac:0.71,dir:1,len:[8,12],ang:-0.14,padW:[6,9],padH:[2,3],droop:true},
+    {frac:0.88,dir:-1,len:[5,8],ang:-0.22,padW:[5,7],padH:[2,3],droop:true},
+    {frac:0.90,dir:1,len:[5,8],ang:-0.22,padW:[5,7],padH:[2,3],droop:true},
+    {frac:0.97,dir:0,len:[3,5],ang:-0.7,padW:[6,9],padH:[2,3],droop:true},
+  ];
+  let pbs=baseBranches.map(b=>{
+    let d=b.dir;if(d!==0&&leanDir<0) d=-d;
+    return{...b,dir:d,triggered:false};
+  });
+  shoots.push({type:'trunk',tree:'swamp',x:CX,y:baseY,xf:0,
+    life:tLen,lean:0.3*leanDir,curv:0.15,age:0,tLen,pendingBranches:pbs});
+}
+
+function startBamboo(){
+  let baseY=H-3;
+  let count=ri(4,7);
+  let spread=ri(3,5);
+  for(let i=0;i<count;i++){
+    let offset=Math.round((i-count/2)*spread)+CX;
+    let h=ri(38,52);
+    let startDelay=ri(0,8);
+    let leanDir=Math.random()<0.5?1:-1;
+    shoots.push({type:'bamboo_stalk',x:offset,y:baseY,life:h,age:0,
+      totalH:h,delay:startDelay,nodeInterval:ri(5,7),lean:(Math.random()*0.1+0.02)*leanDir,xf:0});
+  }
+}
+
+/* ── STEP ── */
 function step(){
   if(!shoots.length&&!branchQueue.length)return;
   age++;
-
-  // Check if we can release the next queued branch
-  // A branch is "active" if there's a shoot of type 'branch' still alive
   let hasBranch=shoots.some(sh=>sh.type==='branch');
-  if(!hasBranch&&branchQueue.length>0){
-    // Release next branch from queue
-    shoots.push(branchQueue.shift());
-  }
-
+  if(!hasBranch&&branchQueue.length>0) shoots.push(branchQueue.shift());
   let nxt=[];
 
   for(let sh of shoots){
@@ -166,44 +389,69 @@ function step(){
 
     if(sh.type==='trunk'){
       let frac=1-(sh.life/sh.tLen);
-      let thick=frac<0.4?3:frac<0.7?2:1;
-      let chars=['║','│','|'];
-      let tch=chars[3-thick];
-      s(sh.y,sh.x,tch,'t');
-      if(thick>=2) s(sh.y,sh.x-1,thick>=3?'║':'│','t2');
-      if(thick>=3) s(sh.y,sh.x+1,'║','t3');
+      let tree=sh.tree||'bonsai';
+
+      if(tree==='baobab'){
+        let thick=frac<0.75?5:frac<0.9?3:2;
+        let hw=Math.floor(thick/2);
+        for(let dc=-hw;dc<=hw;dc++){
+          let tc=Math.abs(dc)===hw?'bk2':'bk1';
+          let ch=Math.abs(dc)===hw?'▓':'█';
+          if(frac>0.6&&Math.random()<0.1) ch='▓';
+          s(sh.y,sh.x+dc,ch,tc);
+        }
+      }else if(tree==='oak'){
+        let thick=frac<0.3?3:frac<0.6?2:1;
+        let hw=Math.floor(thick/2);
+        for(let dc=-hw;dc<=hw;dc++){
+          s(sh.y,sh.x+dc,Math.abs(dc)===hw?'│':'║',Math.abs(dc)===hw?'ok2':'ok1');
+        }
+      }else if(tree==='swamp'){
+        let thick=frac<0.35?2:1;
+        s(sh.y,sh.x,thick>=2?'║':'│','t');
+        if(thick>=2){s(sh.y,sh.x-1,'│','t2');s(sh.y,sh.x+1,'│','t2');}
+        if(sh.age<=2){
+          for(let i=1;i<=3+sh.age;i++){
+            if(Math.random()<0.5) s(sh.y+sh.age,sh.x-i*2+ri(-1,0),'/','r');
+            if(Math.random()<0.5) s(sh.y+sh.age,sh.x+i*2+ri(0,1),'\\','r');
+          }
+        }
+      }else{
+        let thick=frac<0.4?3:frac<0.7?2:1;
+        let tch=['║','│','|'][3-thick];
+        s(sh.y,sh.x,tch,'t');
+        if(thick>=2) s(sh.y,sh.x-1,thick>=3?'║':'│','t2');
+        if(thick>=3) s(sh.y,sh.x+1,'║','t3');
+      }
 
       let wobble=Math.sin(sh.age*sh.curv*0.65)*0.7+sh.lean*0.5;
       let xf=sh.xf+wobble;
       let mx=0;
       if(Math.abs(xf)>=1){mx=xf>0?1:-1;xf-=mx;}
 
-      // Queue branches as trunk passes their trigger points
       for(let pb of sh.pendingBranches){
         if(!pb.triggered&&frac>=pb.frac){
           pb.triggered=true;
           let blen=ri(pb.len[0],pb.len[1]);
           let dir=pb.dir;
           let branchShoot={
-            type:'branch',x:sh.x+(dir===0?0:dir*2),y:sh.y,xf:0,yf:0,
+            type:'branch',tree,x:sh.x+(dir===0?0:dir*2),y:sh.y,xf:0,yf:0,
             life:blen,dx:dir===0?0:dir*0.9,dy:pb.ang,age:0,
-            padW:ri(pb.padW[0],pb.padW[1]),
-            padH:ri(pb.padH[0],pb.padH[1])
+            droop:pb.droop||false
           };
-          // First branch goes immediately, rest get queued
-          if(!branchQueue.length&&!shoots.some(s=>s.type==='branch')){
+          // Oak uses padR for circular canopy
+          if(pb.padR) branchShoot.padR=ri(pb.padR[0],pb.padR[1]);
+          else{branchShoot.padW=ri(pb.padW[0],pb.padW[1]);branchShoot.padH=ri(pb.padH[0],pb.padH[1]);}
+
+          if(!branchQueue.length&&!shoots.some(s=>s.type==='branch'))
             nxt.push(branchShoot);
-          } else {
-            branchQueue.push(branchShoot);
-          }
+          else branchQueue.push(branchShoot);
         }
       }
 
-      // Exposed roots near base
-      if(sh.age===0){
+      if(sh.age===0&&(tree==='bonsai'||tree==='oak')){
         for(let i=1;i<=5;i++){
-          let rx=sh.x-i*2-ri(0,1);
-          let lx=sh.x+i*2+ri(0,1);
+          let rx=sh.x-i*2-ri(0,1),lx=sh.x+i*2+ri(0,1);
           if(Math.random()<0.6){s(sh.y+1,rx,'/','r');s(sh.y+1,rx+1,'/','r');}
           if(Math.random()<0.6){s(sh.y+1,lx,'\\','r');s(sh.y+1,lx-1,'\\','r');}
         }
@@ -219,20 +467,26 @@ function step(){
       else if(sh.dx<-0.2) ch='\\';
       else ch='│';
       if(Math.random()<0.08) ch='~';
-      s(sh.y,sh.x,ch,sh.age<3?'b':'b2');
+      let bcl=sh.tree==='swamp'?'wt':sh.tree==='baobab'?'bk2':sh.age<3?'b':'b2';
+      s(sh.y,sh.x,ch,bcl);
 
       let xf=(sh.xf||0)+sh.dx;
       let yf=(sh.yf||0)+sh.dy;
       let mx=0,my=0;
       if(Math.abs(xf)>=1){mx=xf>0?1:-1;xf-=mx;}
       if(Math.abs(yf)>=1){my=yf>0?1:-1;yf-=my;}
-
       let newdy=sh.dy-(sh.age>5?0.012:0);
 
       if(sh.life<=1){
-        // Terminal: cloud-shaped foliage pad, flat bottom sits at branch tip
-        nxt.push({type:'pad',x:sh.x+mx,y:sh.y+my-sh.padH,
-          padW:sh.padW,padH:sh.padH,life:Math.ceil(sh.padW/2)+1,age:0});
+        if(sh.padR!==undefined){
+          // Oak: circular pad
+          nxt.push({type:'circlepad',tree:sh.tree,x:sh.x+mx,y:sh.y+my,
+            padR:sh.padR,life:sh.padR+2,age:0});
+        }else{
+          nxt.push({type:'pad',tree:sh.tree,x:sh.x+mx,y:sh.y+my-(sh.padH||3),
+            padW:sh.padW||8,padH:sh.padH||3,life:Math.ceil((sh.padW||8)/2)+1,age:0,
+            droop:sh.droop||false});
+        }
       }else{
         nxt.push({...sh,x:sh.x+mx,y:sh.y+my,xf,yf,dy:newdy,life:sh.life-1,age:sh.age+1});
       }
@@ -240,8 +494,72 @@ function step(){
     }else if(sh.type==='pad'){
       let w=Math.min(sh.age*3+2,sh.padW);
       let h=Math.min(Math.max(2,sh.age+1),sh.padH);
-      drawCloudPad(sh.y,sh.x,w,h);
+      let lcl=sh.tree==='swamp'?'ms':null;
+      drawCloudPad(sh.y,sh.x,w,h,lcl);
+      if(sh.droop&&sh.age>=2){
+        let tendrilCount=Math.min(sh.age,Math.floor(w*0.6));
+        for(let t=0;t<tendrilCount;t++){
+          let tc=sh.x+ri(-w,w);
+          let tendrilLen=ri(3,8+sh.age);
+          for(let d=1;d<=tendrilLen;d++){
+            let tr=sh.y+h+d;
+            let tch=Math.random()<0.3?':':Math.random()<0.5?';':'¦';
+            if(d===tendrilLen&&Math.random()<0.5) tch='·';
+            if(empty(tr,tc)) s(tr,tc,tch,Math.random()<0.5?'ms':'ms2');
+          }
+        }
+      }
       if(sh.life>0) nxt.push({...sh,life:sh.life-1,age:sh.age+1});
+
+    }else if(sh.type==='circlepad'){
+      // Grow circle gradually for oak
+      let curR=Math.min(sh.age+1,sh.padR);
+      drawCirclePad(sh.y,sh.x,curR);
+      if(sh.life>0) nxt.push({...sh,life:sh.life-1,age:sh.age+1});
+
+    }else if(sh.type==='bamboo_stalk'){
+      if(sh.delay>0){nxt.push({...sh,delay:sh.delay-1});continue;}
+      let frac=1-(sh.life/sh.totalH);
+      let ch='│';
+      let isNode=sh.age>0&&sh.age%sh.nodeInterval===0;
+      if(isNode) ch='╌';
+      let cl=frac<0.3?'bm1':frac<0.6?'bm2':'bm3';
+      if(isNode) cl='bmn';
+      s(sh.y,sh.x,ch,cl);
+      if(isNode&&sh.age>3){
+        let side=Math.random()<0.5?-1:1;
+        let leafLen=ri(2,5);
+        for(let l=1;l<=leafLen;l++){
+          let lr=sh.y-l+ri(0,1);
+          let lc=sh.x+side*l;
+          if(empty(lr,lc)){
+            let lch=Math.random()<0.4?'~':Math.random()<0.5?'*':'&';
+            s(lr,lc,lch,Math.random()<0.5?'l2':'l4');
+          }
+        }
+        if(Math.random()<0.5){
+          let s2=-side,leafLen2=ri(1,3);
+          for(let l=1;l<=leafLen2;l++){
+            let lr=sh.y-l+ri(0,1);
+            let lc=sh.x+s2*l;
+            if(empty(lr,lc)){
+              let lch=Math.random()<0.4?'~':Math.random()<0.5?'*':'&';
+              s(lr,lc,lch,Math.random()<0.5?'l3':'l5');
+            }
+          }
+        }
+      }
+      let wobble=sh.lean;
+      let xf=(sh.xf||0)+wobble;
+      let mx=0;
+      if(Math.abs(xf)>=1){mx=xf>0?1:-1;xf-=mx;}
+      if(sh.life>1) nxt.push({...sh,x:sh.x+mx,y:sh.y-1,xf,life:sh.life-1,age:sh.age+1});
+      else{
+        for(let dc=-2;dc<=2;dc++)
+          for(let dr=-2;dr<=0;dr++)
+            if(Math.random()<0.6&&empty(sh.y-1+dr,sh.x+dc))
+              s(sh.y-1+dr,sh.x+dc,Math.random()<0.5?'&':'*',Math.random()<0.5?'l2':'l5');
+      }
     }
   }
   shoots=nxt;
@@ -260,7 +578,8 @@ function render(){
     out+=ln+'\n';
   }
   document.getElementById('canvas').innerHTML=out;
-  document.getElementById('info').textContent='age: '+age+'  · '+(shoots.length||branchQueue.length?'growing...':'~ mature ~');
+  let typeName=TYPES.find(t=>t.id===selectedType).label;
+  document.getElementById('info').textContent=typeName+' · age: '+age+'  · '+(shoots.length||branchQueue.length?'growing...':'~ mature ~');
 }
 
 function tick(){if(!paused){step();render();}timer=setTimeout(tick,delay);}
