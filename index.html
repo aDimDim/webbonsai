@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;min-height:100vh;font-family:monospace;color:#e0e0e0;overflow:auto;padding:10px}
+#canvas{font-family:'Courier New',monospace;font-size:16px;line-height:1.15;
+  white-space:pre;margin-bottom:12px}
+.t{color:#8B6914}.t2{color:#6B4C09}.t3{color:#A07828}
+.r{color:#5C4410}
+.b{color:#7B6B3A}.b2{color:#5A5030}
+.l1{color:#2E8B2E}.l2{color:#3CB043}.l3{color:#5DBB5D}.l4{color:#228B22}.l5{color:#90EE90}
+.lg{color:#9ACD32}.lf{color:#DAA520}
+.p{color:#777}.ps{color:#705030}
+.ctrls{display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center;margin-bottom:6px}
+.ctrls button{background:none;border:1px solid #555;color:#aaa;padding:6px 16px;
+  font-family:monospace;font-size:14px;cursor:pointer;border-radius:4px}
+.ctrls button:hover{border-color:#8f8;color:#8f8}
+.ctrls label{color:#666;font-size:13px}
+.ctrls input[type=range]{width:120px;accent-color:#6B8E23}
+.info{font-size:13px;color:#555}
+</style>
+</head>
+<body>
+<div id="canvas"></div>
+<div class="ctrls">
+  <button onclick="resetTree()">plant new seed</button>
+  <button id="pauseBtn" onclick="togglePause()">pause</button>
+  <label>speed: <input type="range" min="1" max="10" value="5" id="speed" oninput="updateSpeed()"></label>
+</div>
+<div class="info" id="info"></div>
+
+<script>
+const W=110,H=62;
+const CX=Math.floor(W/2);
+let grid,clr,shoots,paused=false,age=0,timer,delay=140;
+
+// Branch queue: branches wait here until the previous one is done
+let branchQueue=[];
+let activeBranch=false; // is a branch currently growing?
+
+function init(){
+  grid=[];clr=[];
+  for(let r=0;r<H;r++){grid[r]=new Array(W).fill(' ');clr[r]=new Array(W).fill('');}
+  shoots=[];age=0;
+  branchQueue=[];
+  activeBranch=false;
+  drawPot();
+  startBonsai();
+}
+
+function s(r,c,ch,cl){if(r>=0&&r<H&&c>=0&&c<W){grid[r][c]=ch;clr[r][c]=cl||'';}}
+function empty(r,c){return r>=0&&r<H&&c>=0&&c<W&&grid[r][c]===' ';}
+function ri(a,b){return a+Math.floor(Math.random()*(b-a+1));}
+
+function drawPot(){
+  let pw=44,pl=CX-Math.floor(pw/2),pr=pl+pw-1;
+  let pt=H-7;
+  for(let c=pl;c<=pr;c++) s(pt,c,'▄','p');
+  for(let r=pt+1;r<=pt+3;r++){s(r,pl,'│','p');s(r,pr,'│','p');}
+  for(let r=pt+1;r<=pt+2;r++)
+    for(let c=pl+1;c<pr;c++) s(r,c,Math.random()<0.35?'.':'~','ps');
+  for(let c=pl;c<=pr;c++) s(pt+4,c,'▀','p');
+  s(pt+5,pl+3,'(','p');s(pt+5,pl+4,'_','p');s(pt+5,pl+5,')','p');
+  s(pt+5,pr-5,'(','p');s(pt+5,pr-4,'_','p');s(pt+5,pr-3,')','p');
+}
+
+const LEAFCH=['&','&','&','*','#','@','♣','♣'];
+const LEAFCL=['l1','l1','l2','l2','l3','l4','l5','lg','lf'];
+
+function addLeaf(r,c){
+  if(!empty(r,c))return;
+  let ch=LEAFCH[ri(0,LEAFCH.length-1)];
+  let cl=LEAFCL[ri(0,LEAFCL.length-3)];
+  if(Math.random()<0.06) cl='lf';
+  if(Math.random()<0.08) cl='lg';
+  s(r,c,ch,cl);
+}
+
+function drawCloudPad(cy,cx,halfW,h){
+  // Rounded on top, flat and wide on the bottom (like bonsai canopy shelves)
+  for(let dr=0;dr<h;dr++){
+    let fromBottom=h-1-dr;
+    let rowW;
+    if(fromBottom===0) rowW=halfW;
+    else if(fromBottom===1) rowW=halfW-1;
+    else rowW=Math.max(2,halfW-fromBottom*2);
+    let density=fromBottom<=1?0.92:fromBottom<=2?0.82:0.65;
+    for(let dc=-rowW;dc<=rowW;dc++){
+      let cornerDist=Math.abs(dc)-rowW+1;
+      if(cornerDist>0&&Math.random()<0.5)continue;
+      if(Math.random()<density) addLeaf(cy+dr,cx+dc);
+    }
+  }
+  for(let dc=-halfW-1;dc<=halfW+1;dc++){
+    if(Math.random()<0.25) addLeaf(cy+h,cx+dc);
+  }
+}
+
+const STYLES=[
+  {name:'moyogi',lean:0.45,trunkLen:[20,25],curv:0.5,
+   branches:[
+     {frac:0.28,dir:-1,len:[8,12],ang:-0.12,padW:[8,12],padH:[3,4]},
+     {frac:0.48,dir:1,len:[11,16],ang:-0.14,padW:[10,14],padH:[3,5]},
+     {frac:0.68,dir:-1,len:[7,11],ang:-0.2,padW:[8,11],padH:[3,4]},
+     {frac:0.82,dir:1,len:[5,8],ang:-0.25,padW:[6,9],padH:[3,4]},
+     {frac:0.95,dir:0,len:[3,5],ang:-0.7,padW:[7,10],padH:[3,4]},
+   ]},
+  {name:'shakan',lean:0.8,trunkLen:[19,24],curv:0.22,
+   branches:[
+     {frac:0.22,dir:-1,len:[7,10],ang:-0.13,padW:[7,10],padH:[3,4]},
+     {frac:0.42,dir:1,len:[13,19],ang:-0.1,padW:[11,15],padH:[3,5]},
+     {frac:0.58,dir:1,len:[9,13],ang:-0.18,padW:[8,12],padH:[3,4]},
+     {frac:0.75,dir:-1,len:[6,10],ang:-0.22,padW:[7,10],padH:[3,4]},
+     {frac:0.92,dir:0,len:[3,6],ang:-0.65,padW:[7,10],padH:[3,4]},
+   ]},
+  {name:'formal',lean:0.06,trunkLen:[22,27],curv:0.13,
+   branches:[
+     {frac:0.20,dir:-1,len:[12,16],ang:-0.08,padW:[10,14],padH:[3,5]},
+     {frac:0.23,dir:1,len:[11,15],ang:-0.08,padW:[10,14],padH:[3,5]},
+     {frac:0.44,dir:-1,len:[9,13],ang:-0.14,padW:[8,12],padH:[3,4]},
+     {frac:0.47,dir:1,len:[9,13],ang:-0.14,padW:[8,12],padH:[3,4]},
+     {frac:0.68,dir:-1,len:[6,9],ang:-0.22,padW:[7,10],padH:[3,4]},
+     {frac:0.71,dir:1,len:[6,9],ang:-0.22,padW:[7,10],padH:[3,4]},
+     {frac:0.93,dir:0,len:[3,6],ang:-0.75,padW:[8,11],padH:[3,4]},
+   ]},
+];
+
+function startBonsai(){
+  let baseY=H-8;
+  let style=STYLES[ri(0,STYLES.length-1)];
+  let tLen=ri(style.trunkLen[0],style.trunkLen[1]);
+  let leanDir=Math.random()<0.5?1:-1;
+  let lean=style.lean*leanDir;
+
+  let pbs=style.branches.map(b=>{
+    let d=b.dir;
+    if(d!==0&&leanDir<0) d=-d;
+    return{...b,dir:d,triggered:false};
+  });
+
+  shoots.push({
+    type:'trunk',x:CX,y:baseY,xf:0,
+    life:tLen,lean:lean,curv:style.curv,
+    age:0,tLen:tLen,pendingBranches:pbs
+  });
+}
+
+function step(){
+  if(!shoots.length&&!branchQueue.length)return;
+  age++;
+
+  // Check if we can release the next queued branch
+  // A branch is "active" if there's a shoot of type 'branch' still alive
+  let hasBranch=shoots.some(sh=>sh.type==='branch');
+  if(!hasBranch&&branchQueue.length>0){
+    // Release next branch from queue
+    shoots.push(branchQueue.shift());
+  }
+
+  let nxt=[];
+
+  for(let sh of shoots){
+    if(sh.life<=0)continue;
+
+    if(sh.type==='trunk'){
+      let frac=1-(sh.life/sh.tLen);
+      let thick=frac<0.4?3:frac<0.7?2:1;
+      let chars=['║','│','|'];
+      let tch=chars[3-thick];
+      s(sh.y,sh.x,tch,'t');
+      if(thick>=2) s(sh.y,sh.x-1,thick>=3?'║':'│','t2');
+      if(thick>=3) s(sh.y,sh.x+1,'║','t3');
+
+      let wobble=Math.sin(sh.age*sh.curv*0.65)*0.7+sh.lean*0.5;
+      let xf=sh.xf+wobble;
+      let mx=0;
+      if(Math.abs(xf)>=1){mx=xf>0?1:-1;xf-=mx;}
+
+      // Queue branches as trunk passes their trigger points
+      for(let pb of sh.pendingBranches){
+        if(!pb.triggered&&frac>=pb.frac){
+          pb.triggered=true;
+          let blen=ri(pb.len[0],pb.len[1]);
+          let dir=pb.dir;
+          let branchShoot={
+            type:'branch',x:sh.x+(dir===0?0:dir*2),y:sh.y,xf:0,yf:0,
+            life:blen,dx:dir===0?0:dir*0.9,dy:pb.ang,age:0,
+            padW:ri(pb.padW[0],pb.padW[1]),
+            padH:ri(pb.padH[0],pb.padH[1])
+          };
+          // First branch goes immediately, rest get queued
+          if(!branchQueue.length&&!shoots.some(s=>s.type==='branch')){
+            nxt.push(branchShoot);
+          } else {
+            branchQueue.push(branchShoot);
+          }
+        }
+      }
+
+      // Exposed roots near base
+      if(sh.age===0){
+        for(let i=1;i<=5;i++){
+          let rx=sh.x-i*2-ri(0,1);
+          let lx=sh.x+i*2+ri(0,1);
+          if(Math.random()<0.6){s(sh.y+1,rx,'/','r');s(sh.y+1,rx+1,'/','r');}
+          if(Math.random()<0.6){s(sh.y+1,lx,'\\','r');s(sh.y+1,lx-1,'\\','r');}
+        }
+      }
+
+      nxt.push({...sh,x:sh.x+mx,y:sh.y-1,xf,life:sh.life-1,age:sh.age+1});
+
+    }else if(sh.type==='branch'){
+      let ch;
+      let absDx=Math.abs(sh.dx),absDy=Math.abs(sh.dy);
+      if(absDy<0.25&&absDx>0.3) ch='─';
+      else if(sh.dx>0.2) ch='/';
+      else if(sh.dx<-0.2) ch='\\';
+      else ch='│';
+      if(Math.random()<0.08) ch='~';
+      s(sh.y,sh.x,ch,sh.age<3?'b':'b2');
+
+      let xf=(sh.xf||0)+sh.dx;
+      let yf=(sh.yf||0)+sh.dy;
+      let mx=0,my=0;
+      if(Math.abs(xf)>=1){mx=xf>0?1:-1;xf-=mx;}
+      if(Math.abs(yf)>=1){my=yf>0?1:-1;yf-=my;}
+
+      let newdy=sh.dy-(sh.age>5?0.012:0);
+
+      if(sh.life<=1){
+        // Terminal: cloud-shaped foliage pad, flat bottom sits at branch tip
+        nxt.push({type:'pad',x:sh.x+mx,y:sh.y+my-sh.padH,
+          padW:sh.padW,padH:sh.padH,life:Math.ceil(sh.padW/2)+1,age:0});
+      }else{
+        nxt.push({...sh,x:sh.x+mx,y:sh.y+my,xf,yf,dy:newdy,life:sh.life-1,age:sh.age+1});
+      }
+
+    }else if(sh.type==='pad'){
+      let w=Math.min(sh.age*3+2,sh.padW);
+      let h=Math.min(Math.max(2,sh.age+1),sh.padH);
+      drawCloudPad(sh.y,sh.x,w,h);
+      if(sh.life>0) nxt.push({...sh,life:sh.life-1,age:sh.age+1});
+    }
+  }
+  shoots=nxt;
+}
+
+function esc(c){return c==='<'?'&lt;':c==='>'?'&gt;':c==='&'?'&amp;':c;}
+
+function render(){
+  let out='';
+  for(let r=0;r<H;r++){
+    let ln='';
+    for(let c=0;c<W;c++){
+      let ch=grid[r][c],cl=clr[r][c];
+      ln+=(cl&&ch!==' ')?'<span class="'+cl+'">'+esc(ch)+'</span>':esc(ch);
+    }
+    out+=ln+'\n';
+  }
+  document.getElementById('canvas').innerHTML=out;
+  document.getElementById('info').textContent='age: '+age+'  · '+(shoots.length||branchQueue.length?'growing...':'~ mature ~');
+}
+
+function tick(){if(!paused){step();render();}timer=setTimeout(tick,delay);}
+function updateSpeed(){let v=+document.getElementById('speed').value;delay=Math.round(320-(v-1)*30);}
+function resetTree(){clearTimeout(timer);init();render();tick();}
+function togglePause(){paused=!paused;document.getElementById('pauseBtn').textContent=paused?'resume':'pause';}
+
+init();render();tick();
+</script>
+</body>
+</html>
